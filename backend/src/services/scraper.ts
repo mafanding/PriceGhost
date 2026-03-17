@@ -284,6 +284,7 @@ async function scrapeWithBrowser(url: string, proxy?: ProxySettings | null): Pro
       '--disable-blink-features=AutomationControlled',
       '--disable-infobars',
       '--disable-crash-reporter',
+      '--disable-crashpad',
       '--window-size=1920,1080',
       '--start-maximized',
       ...proxyArgs,
