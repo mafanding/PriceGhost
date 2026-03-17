@@ -7,6 +7,7 @@ import {
   ParsedPrice,
   findMostLikelyPrice,
 } from '../utils/priceParser';
+import { ProxySettings } from '../models';
 
 // Add stealth plugin to avoid bot detection (Cloudflare, etc.)
 puppeteer.use(StealthPlugin());
@@ -44,6 +45,27 @@ function pricesMatch(price1: number, price2: number): boolean {
   const diff = Math.abs(price1 - price2);
   const avg = (price1 + price2) / 2;
   return (diff / avg) < 0.05; // Within 5%
+}
+
+// Build axios proxy configuration from proxy settings
+function buildAxiosProxyConfig(proxy?: ProxySettings | null) {
+  if (!proxy?.proxy_enabled || !proxy?.proxy_url) return {};
+  try {
+    const parsed = new URL(proxy.proxy_url);
+    if (!parsed.protocol.startsWith('http')) return {}; // SOCKS5 not supported by axios natively
+    return {
+      proxy: {
+        protocol: parsed.protocol.replace(':', ''),
+        host: parsed.hostname,
+        port: parseInt(parsed.port),
+        ...(proxy.proxy_username ? {
+          auth: { username: proxy.proxy_username, password: proxy.proxy_password || '' }
+        } : {})
+      }
+    };
+  } catch {
+    return {};
+  }
 }
 
 // Find consensus among price candidates
@@ -247,7 +269,11 @@ function extractGenericCssCandidates($: CheerioAPI): PriceCandidate[] {
 }
 
 // Browser-based scraping for sites that block HTTP requests (e.g., Cloudflare)
-async function scrapeWithBrowser(url: string): Promise<string> {
+async function scrapeWithBrowser(url: string, proxy?: ProxySettings | null): Promise<string> {
+  const proxyArgs = proxy?.proxy_enabled && proxy?.proxy_url
+    ? [`--proxy-server=${proxy.proxy_url}`]
+    : [];
+
   const browser = await puppeteer.launch({
     headless: true,
     args: [
@@ -259,6 +285,7 @@ async function scrapeWithBrowser(url: string): Promise<string> {
       '--disable-crash-reporter',
       '--window-size=1920,1080',
       '--start-maximized',
+      ...proxyArgs,
     ],
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
     ignoreDefaultArgs: ['--enable-automation'],
@@ -266,6 +293,14 @@ async function scrapeWithBrowser(url: string): Promise<string> {
 
   try {
     const page = await browser.newPage();
+
+    // Set proxy authentication if needed
+    if (proxy?.proxy_enabled && proxy?.proxy_username) {
+      await page.authenticate({
+        username: proxy.proxy_username,
+        password: proxy.proxy_password || '',
+      });
+    }
 
     // Set viewport
     await page.setViewport({ width: 1920, height: 1080 });
@@ -1123,7 +1158,7 @@ const genericImageSelectors = [
   'img[class*="product"]',
 ];
 
-export async function scrapeProduct(url: string, userId?: number): Promise<ScrapedProduct> {
+export async function scrapeProduct(url: string, _userId?: number, proxy?: ProxySettings | null): Promise<ScrapedProduct> {
   const result: ScrapedProduct = {
     name: null,
     price: null,
@@ -1160,13 +1195,14 @@ export async function scrapeProduct(url: string, userId?: number): Promise<Scrap
         },
         timeout: 20000,
         maxRedirects: 5,
+        ...buildAxiosProxyConfig(proxy),
       });
       html = response.data;
     } catch (axiosError) {
       // If we get a 403 (Forbidden), try using a headless browser
       if (axiosError instanceof AxiosError && axiosError.response?.status === 403) {
         console.log(`HTTP request blocked (403) for ${url}, falling back to browser scraping...`);
-        html = await scrapeWithBrowser(url);
+        html = await scrapeWithBrowser(url, proxy);
         usedBrowser = true;
       } else {
         throw axiosError;
@@ -1233,7 +1269,7 @@ export async function scrapeProduct(url: string, userId?: number): Promise<Scrap
     if (!result.price && !usedBrowser) {
       console.log(`[Scraper] No price found in static HTML for ${url}, trying headless browser...`);
       try {
-        html = await scrapeWithBrowser(url);
+        html = await scrapeWithBrowser(url, proxy);
         usedBrowser = true;
         const $browser = load(html);
 
@@ -1285,64 +1321,6 @@ export async function scrapeProduct(url: string, userId?: number): Promise<Scrap
       }
     }
 
-    // If we have a price and userId is provided, try AI verification
-    if (result.price && userId && html) {
-      try {
-        const { tryAIVerification } = await import('./ai-extractor');
-        const verifyResult = await tryAIVerification(
-          url,
-          html,
-          result.price.price,
-          result.price.currency,
-          userId
-        );
-
-        if (verifyResult) {
-          if (verifyResult.isCorrect) {
-            console.log(`[AI Verify] Confirmed price $${result.price.price} is correct (confidence: ${verifyResult.confidence})`);
-            result.aiStatus = 'verified';
-          } else if (verifyResult.suggestedPrice && verifyResult.confidence > 0.6) {
-            console.log(`[AI Verify] Price correction: $${result.price.price} -> $${verifyResult.suggestedPrice.price} (${verifyResult.reason})`);
-            result.price = verifyResult.suggestedPrice;
-            result.aiStatus = 'corrected';
-          } else {
-            console.log(`[AI Verify] Price might be incorrect but no confident suggestion: ${verifyResult.reason}`);
-            // Don't set aiStatus if verification was inconclusive
-          }
-
-          // Use AI-detected stock status if we don't have a definitive one yet
-          // or if AI says it's out of stock (AI can catch pre-order/coming soon)
-          if (verifyResult.stockStatus && verifyResult.stockStatus !== 'unknown') {
-            if (result.stockStatus === 'unknown' || verifyResult.stockStatus === 'out_of_stock') {
-              console.log(`[AI Verify] Stock status: ${verifyResult.stockStatus} (was: ${result.stockStatus})`);
-              result.stockStatus = verifyResult.stockStatus;
-            }
-          }
-        }
-      } catch (verifyError) {
-        console.error(`[AI Verify] Verification failed for ${url}:`, verifyError);
-      }
-    }
-
-    // If we still don't have a price and userId is provided, try AI extraction as fallback
-    if (!result.price && userId && html) {
-      try {
-        const { tryAIExtraction } = await import('./ai-extractor');
-        const aiResult = await tryAIExtraction(url, html, userId);
-
-        if (aiResult && aiResult.price && aiResult.confidence > 0.5) {
-          console.log(`[AI] Successfully extracted price for ${url}: ${aiResult.price.price} (confidence: ${aiResult.confidence})`);
-          result.price = aiResult.price;
-          if (!result.name && aiResult.name) result.name = aiResult.name;
-          if (!result.imageUrl && aiResult.imageUrl) result.imageUrl = aiResult.imageUrl;
-          if (result.stockStatus === 'unknown' && aiResult.stockStatus !== 'unknown') {
-            result.stockStatus = aiResult.stockStatus;
-          }
-        }
-      } catch (aiError) {
-        console.error(`[AI] Extraction failed for ${url}:`, aiError);
-      }
-    }
   } catch (error) {
     console.error(`Error scraping ${url}:`, error);
   }
@@ -1356,16 +1334,14 @@ export async function scrapeProduct(url: string, userId?: number): Promise<Scrap
  *
  * @param anchorPrice - The price the user previously confirmed. Used to select the correct
  *                      variant on refresh when multiple prices are found.
- * @param skipAiVerification - If true, skip AI verification entirely for this product.
- * @param skipAiExtraction - If true, skip AI extraction fallback for this product.
+ * @param proxy - Optional proxy settings to route requests through.
  */
 export async function scrapeProductWithVoting(
   url: string,
-  userId?: number,
+  _userId?: number,
   preferredMethod?: ExtractionMethod,
   anchorPrice?: number,
-  skipAiVerification?: boolean,
-  skipAiExtraction?: boolean
+  proxy?: ProxySettings | null
 ): Promise<ScrapedProductWithCandidates> {
   const result: ScrapedProductWithCandidates = {
     name: null,
@@ -1395,7 +1371,7 @@ export async function scrapeProductWithVoting(
     // For JS-heavy sites, go straight to browser
     if (requiresBrowser) {
       console.log(`[Voting] ${new URL(url).hostname} requires browser rendering, using Puppeteer...`);
-      html = await scrapeWithBrowser(url);
+      html = await scrapeWithBrowser(url, proxy);
       usedBrowser = true;
     } else {
       // Fetch HTML
@@ -1421,12 +1397,13 @@ export async function scrapeProductWithVoting(
         },
         timeout: 20000,
         maxRedirects: 5,
+        ...buildAxiosProxyConfig(proxy),
       });
       html = response.data;
       } catch (axiosError) {
         if (axiosError instanceof AxiosError && axiosError.response?.status === 403) {
           console.log(`[Voting] HTTP blocked (403) for ${url}, using browser...`);
-          html = await scrapeWithBrowser(url);
+          html = await scrapeWithBrowser(url, proxy);
           usedBrowser = true;
         } else {
           throw axiosError;
@@ -1461,7 +1438,7 @@ export async function scrapeProductWithVoting(
     if (allCandidates.length === 0 && !usedBrowser) {
       console.log(`[Voting] No candidates in static HTML, trying browser...`);
       try {
-        html = await scrapeWithBrowser(url);
+        html = await scrapeWithBrowser(url, proxy);
         usedBrowser = true;
         $ = load(html);
 
@@ -1495,9 +1472,6 @@ export async function scrapeProductWithVoting(
     // Store all candidates
     result.priceCandidates = allCandidates;
 
-    // Track if we used anchor price (to prevent AI from overriding user's choice)
-    let usedAnchorPrice = false;
-
     // PRIORITY 1: If we have an anchor price, it takes precedence (user confirmed this price)
     // This handles variant products where multiple prices exist on the page
     if (anchorPrice && allCandidates.length > 0) {
@@ -1518,73 +1492,25 @@ export async function scrapeProductWithVoting(
         console.log(`[Voting] Found match for anchor price ${anchorPrice}: ${closestCandidate.price} via ${closestCandidate.method} (${(priceDiff * 100).toFixed(1)}% diff)`);
         result.price = { price: closestCandidate.price, currency: closestCandidate.currency };
         result.selectedMethod = closestCandidate.method;
-        usedAnchorPrice = true;
-        result.aiStatus = 'verified';  // Mark as verified to skip AI price override
-
-        // Use AI to verify stock status for this specific variant (price matched, but stock might be wrong)
-        if (userId && html && !skipAiVerification) {
-          try {
-            const { tryAIStockStatusVerification } = await import('./ai-extractor');
-            const stockResult = await tryAIStockStatusVerification(
-              url,
-              html,
-              closestCandidate.price,
-              closestCandidate.currency,
-              userId
-            );
-            if (stockResult && stockResult.confidence > 0.6) {
-              console.log(`[Voting] AI stock status for $${closestCandidate.price} variant: ${stockResult.stockStatus} (${stockResult.reason})`);
-              result.stockStatus = stockResult.stockStatus;
-            }
-          } catch (stockError) {
-            console.error(`[Voting] AI stock status verification failed:`, stockError);
-          }
-        }
-
         return result;
       } else {
         // No close match - still use the closest candidate
-        // This prevents AI from picking a completely different price (like main buy box vs other sellers)
         console.log(`[Voting] No close match for anchor ${anchorPrice}, using closest: ${closestCandidate.price} (${(priceDiff * 100).toFixed(1)}% diff) - may be a price change`);
         result.price = { price: closestCandidate.price, currency: closestCandidate.currency };
         result.selectedMethod = closestCandidate.method;
-        usedAnchorPrice = true;
-        // IMPORTANT: Mark as verified to prevent AI from overriding user's deliberate choice
-        // The user selected a specific price (e.g., "other sellers" on Amazon), don't let AI
-        // "correct" it to the main buy box price
-        result.aiStatus = 'verified';
-
-        // Use AI to verify stock status for this specific variant
-        if (userId && html && !skipAiVerification) {
-          try {
-            const { tryAIStockStatusVerification } = await import('./ai-extractor');
-            const stockResult = await tryAIStockStatusVerification(
-              url,
-              html,
-              closestCandidate.price,
-              closestCandidate.currency,
-              userId
-            );
-            if (stockResult && stockResult.confidence > 0.6) {
-              console.log(`[Voting] AI stock status for $${closestCandidate.price} variant: ${stockResult.stockStatus} (${stockResult.reason})`);
-              result.stockStatus = stockResult.stockStatus;
-            }
-          } catch (stockError) {
-            console.error(`[Voting] AI stock status verification failed:`, stockError);
-          }
-        }
-
         return result;
       }
     }
 
     // PRIORITY 2: If user has a preferred method and no anchor match, try that method
-    if (preferredMethod && allCandidates.length > 0) {
-      const preferredCandidates = allCandidates.filter(c => c.method === preferredMethod);
+    // Treat 'ai' as undefined since AI extraction is no longer supported
+    const effectivePreferredMethod = preferredMethod === 'ai' ? undefined : preferredMethod;
+    if (effectivePreferredMethod && allCandidates.length > 0) {
+      const preferredCandidates = allCandidates.filter(c => c.method === effectivePreferredMethod);
       if (preferredCandidates.length > 0) {
         // Use highest confidence candidate from preferred method
         const selectedCandidate = preferredCandidates.sort((a, b) => b.confidence - a.confidence)[0];
-        console.log(`[Voting] Using preferred method ${preferredMethod}: ${selectedCandidate.price}`);
+        console.log(`[Voting] Using preferred method ${effectivePreferredMethod}: ${selectedCandidate.price}`);
         result.price = { price: selectedCandidate.price, currency: selectedCandidate.currency };
         result.selectedMethod = preferredMethod;
         return result;
@@ -1601,142 +1527,17 @@ export async function scrapeProductWithVoting(
       result.selectedMethod = consensusPrice.method;
       console.log(`[Voting] Consensus price: ${consensusPrice.price} via ${consensusPrice.method}`);
     } else if (allCandidates.length > 0) {
-      // No consensus - try AI arbitration if available
-      if (userId && html) {
-        console.log(`[Voting] No consensus, trying AI arbitration...`);
-        try {
-          const { tryAIArbitration } = await import('./ai-extractor');
-          const aiResult = await tryAIArbitration(url, html, allCandidates, userId);
-
-          if (aiResult && aiResult.selectedPrice) {
-            console.log(`[Voting] AI selected price: ${aiResult.selectedPrice.price} (reason: ${aiResult.reason})`);
-            result.price = { price: aiResult.selectedPrice.price, currency: aiResult.selectedPrice.currency };
-            result.selectedMethod = aiResult.selectedPrice.method;
-            result.aiStatus = 'verified';
-
-            // Add AI as a candidate for transparency
-            if (!allCandidates.find(c => c.method === 'ai')) {
-              result.priceCandidates.push({
-                price: aiResult.selectedPrice.price,
-                currency: aiResult.selectedPrice.currency,
-                method: 'ai',
-                context: `AI arbitration: ${aiResult.reason}`,
-                confidence: aiResult.confidence || 0.8,
-              });
-            }
-          } else {
-            // AI couldn't decide either - flag for user review
-            console.log(`[Voting] AI couldn't decide, flagging for user review`);
-            result.needsReview = true;
-            // Use the most confident candidate as default
-            const bestCandidate = allCandidates.sort((a, b) => b.confidence - a.confidence)[0];
-            result.price = { price: bestCandidate.price, currency: bestCandidate.currency };
-            result.selectedMethod = bestCandidate.method;
-          }
-        } catch (aiError) {
-          console.error(`[Voting] AI arbitration failed:`, aiError);
-          // Fall back to flagging for user review
-          result.needsReview = true;
-          const bestCandidate = allCandidates.sort((a, b) => b.confidence - a.confidence)[0];
-          result.price = { price: bestCandidate.price, currency: bestCandidate.currency };
-          result.selectedMethod = bestCandidate.method;
-        }
-      } else {
-        // No AI available - flag for user review if multiple prices differ significantly
-        if (groups.length > 1) {
-          result.needsReview = true;
-          console.log(`[Voting] Multiple price groups found, flagging for user review`);
-        }
-        // Use the most confident candidate as default
-        const bestCandidate = allCandidates.sort((a, b) => b.confidence - a.confidence)[0];
-        result.price = { price: bestCandidate.price, currency: bestCandidate.currency };
-        result.selectedMethod = bestCandidate.method;
+      // No consensus - flag for user review if multiple prices differ significantly
+      if (groups.length > 1) {
+        result.needsReview = true;
+        console.log(`[Voting] Multiple price groups found, flagging for user review`);
       }
-    } else {
-      // No candidates at all - try pure AI extraction (unless disabled for this product)
-      if (userId && html && !skipAiExtraction) {
-        console.log(`[Voting] No candidates found, trying AI extraction...`);
-        try {
-          const { tryAIExtraction } = await import('./ai-extractor');
-          const aiResult = await tryAIExtraction(url, html, userId);
-
-          if (aiResult && aiResult.price && aiResult.confidence > 0.5) {
-            console.log(`[Voting] AI extracted price: ${aiResult.price.price}`);
-            result.price = aiResult.price;
-            result.selectedMethod = 'ai';
-            result.priceCandidates.push({
-              price: aiResult.price.price,
-              currency: aiResult.price.currency,
-              method: 'ai',
-              context: 'AI extraction (no other methods found price)',
-              confidence: aiResult.confidence,
-            });
-            if (!result.name && aiResult.name) result.name = aiResult.name;
-            if (!result.imageUrl && aiResult.imageUrl) result.imageUrl = aiResult.imageUrl;
-            if (result.stockStatus === 'unknown' && aiResult.stockStatus !== 'unknown') {
-              result.stockStatus = aiResult.stockStatus;
-            }
-          }
-        } catch (aiError) {
-          console.error(`[Voting] AI extraction failed:`, aiError);
-        }
-      }
+      // Use the most confident candidate as default
+      const bestCandidate = allCandidates.sort((a, b) => b.confidence - a.confidence)[0];
+      result.price = { price: bestCandidate.price, currency: bestCandidate.currency };
+      result.selectedMethod = bestCandidate.method;
     }
-
-    // If we have a price but AI is available, verify it
-    // SKIP verification if:
-    // - User disabled AI verification for this product
-    // - We have multiple candidates (let user choose from modal instead)
-    // This prevents AI from "correcting" valid alternative prices (e.g., other sellers on Amazon)
-    const hasMultipleCandidates = allCandidates.length > 1;
-    if (result.price && userId && html && !result.aiStatus && !hasMultipleCandidates && !skipAiVerification) {
-      try {
-        const { tryAIVerification } = await import('./ai-extractor');
-        const verifyResult = await tryAIVerification(
-          url,
-          html,
-          result.price.price,
-          result.price.currency,
-          userId
-        );
-
-        if (verifyResult) {
-          if (verifyResult.isCorrect) {
-            result.aiStatus = 'verified';
-          } else if (verifyResult.suggestedPrice && verifyResult.confidence > 0.7) {
-            // AI suggests a different price - this might indicate we need review
-            const existingCandidate = allCandidates.find(c =>
-              pricesMatch(c.price, verifyResult.suggestedPrice!.price)
-            );
-            if (existingCandidate) {
-              // AI agrees with one of our candidates - use that
-              result.price = verifyResult.suggestedPrice;
-              result.selectedMethod = existingCandidate.method;
-              result.aiStatus = 'corrected';
-            } else if (!result.needsReview) {
-              // AI suggests a price we didn't find - flag for review
-              result.needsReview = true;
-              result.priceCandidates.push({
-                price: verifyResult.suggestedPrice.price,
-                currency: verifyResult.suggestedPrice.currency,
-                method: 'ai',
-                context: `AI suggestion: ${verifyResult.reason}`,
-                confidence: verifyResult.confidence,
-              });
-            }
-          }
-
-          // Update stock status from AI
-          if (verifyResult.stockStatus && verifyResult.stockStatus !== 'unknown') {
-            if (result.stockStatus === 'unknown' || verifyResult.stockStatus === 'out_of_stock') {
-              result.stockStatus = verifyResult.stockStatus;
-            }
-          }
-        }
-      } catch (verifyError) {
-        console.error(`[Voting] AI verification failed:`, verifyError);
-      }
-    }
+    // If no candidates at all, price remains null
 
   } catch (error) {
     console.error(`[Voting] Error scraping ${url}:`, error);

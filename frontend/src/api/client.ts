@@ -247,63 +247,27 @@ export const settingsApi = {
   testGotify: () =>
     api.post<{ message: string }>('/settings/notifications/test/gotify'),
 
-  // AI Settings
-  getAI: () =>
-    api.get<AISettings>('/settings/ai'),
+  // Proxy Settings
+  getProxy: () =>
+    api.get<ProxySettings>('/settings/proxy'),
 
-  updateAI: (data: {
-    ai_enabled?: boolean;
-    ai_verification_enabled?: boolean;
-    ai_provider?: 'anthropic' | 'openai' | 'ollama' | 'gemini' | null;
-    anthropic_api_key?: string | null;
-    anthropic_model?: string | null;
-    openai_api_key?: string | null;
-    openai_model?: string | null;
-    ollama_base_url?: string | null;
-    ollama_model?: string | null;
-    gemini_api_key?: string | null;
-    gemini_model?: string | null;
-  }) => api.put<AISettings & { message: string }>('/settings/ai', data),
+  updateProxy: (data: {
+    proxy_enabled?: boolean;
+    proxy_url?: string | null;
+    proxy_username?: string | null;
+    proxy_password?: string | null;
+  }) => api.put<ProxySettings & { message: string }>('/settings/proxy', data),
 
-  testAI: (url: string) =>
-    api.post<AITestResult>('/settings/ai/test', { url }),
-
-  testOllama: (baseUrl: string) =>
-    api.post<OllamaTestResult>('/settings/ai/test-ollama', { base_url: baseUrl }),
-
-  testGemini: (apiKey: string) =>
-    api.post<{ success: boolean; message?: string; error?: string }>('/settings/ai/test-gemini', { api_key: apiKey }),
+  testProxy: () =>
+    api.post<{ success: boolean; exit_ip?: string; message?: string; error?: string }>('/settings/proxy/test'),
 };
 
-// AI Settings types
-export interface AISettings {
-  ai_enabled: boolean;
-  ai_verification_enabled: boolean;
-  ai_provider: 'anthropic' | 'openai' | 'ollama' | 'gemini' | null;
-  anthropic_api_key: string | null;
-  anthropic_model: string | null;
-  openai_api_key: string | null;
-  openai_model: string | null;
-  ollama_base_url: string | null;
-  ollama_model: string | null;
-  gemini_api_key: string | null;
-  gemini_model: string | null;
-}
-
-export interface OllamaTestResult {
-  success: boolean;
-  message?: string;
-  error?: string;
-  models?: string[];
-}
-
-export interface AITestResult {
-  success: boolean;
-  name: string | null;
-  price: { price: number; currency: string } | null;
-  imageUrl: string | null;
-  stockStatus: string;
-  confidence: number;
+// Proxy Settings types
+export interface ProxySettings {
+  proxy_enabled: boolean;
+  proxy_url: string | null;
+  proxy_username: string | null;
+  proxy_password: string | null;
 }
 
 // Profile API

@@ -155,6 +155,18 @@ async function runMigrations() {
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'notifications_cleared_at') THEN
           ALTER TABLE users ADD COLUMN notifications_cleared_at TIMESTAMP;
         END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'proxy_enabled') THEN
+          ALTER TABLE users ADD COLUMN proxy_enabled BOOLEAN DEFAULT false;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'proxy_url') THEN
+          ALTER TABLE users ADD COLUMN proxy_url TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'proxy_username') THEN
+          ALTER TABLE users ADD COLUMN proxy_username TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'proxy_password') THEN
+          ALTER TABLE users ADD COLUMN proxy_password TEXT;
+        END IF;
       END $$;
     `);
 

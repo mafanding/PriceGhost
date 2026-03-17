@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { AuthRequest, authMiddleware } from '../middleware/auth';
-import { productQueries, priceHistoryQueries, stockStatusHistoryQueries } from '../models';
+import { productQueries, priceHistoryQueries, stockStatusHistoryQueries, userQueries } from '../models';
 import { scrapeProductWithVoting, ExtractionMethod } from '../services/scraper';
 
 const router = Router();
@@ -62,11 +62,9 @@ router.post('/:productId/refresh', async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    // Get product settings for AI skip flags
     const preferredMethod = await productQueries.getPreferredExtractionMethod(productId);
     const anchorPrice = await productQueries.getAnchorPrice(productId);
-    const skipAiVerification = await productQueries.isAiVerificationDisabled(productId);
-    const skipAiExtraction = await productQueries.isAiExtractionDisabled(productId);
+    const proxySettings = await userQueries.getProxySettings(userId);
 
     // Scrape product data with proper settings (same as scheduler)
     const scrapedData = await scrapeProductWithVoting(
@@ -74,8 +72,7 @@ router.post('/:productId/refresh', async (req: AuthRequest, res: Response) => {
       userId,
       preferredMethod as ExtractionMethod | undefined,
       anchorPrice || undefined,
-      skipAiVerification,
-      skipAiExtraction
+      proxySettings
     );
 
     // Update stock status and record change if different

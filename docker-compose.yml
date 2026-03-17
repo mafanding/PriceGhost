@@ -23,13 +23,14 @@ services:
 
   # Backend API
   backend:
-    image: ghcr.io/clucraft/priceghost-backend:latest
+    image: ghcr.io/mafanding/priceghost-backend:latest
     container_name: priceghost-backend
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/priceghost
       JWT_SECRET: ${JWT_SECRET:-change-this-in-production-use-strong-secret}
       PORT: 3001
       NODE_ENV: production
+      PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
     ports:
       - "3001:3001"
     depends_on:
@@ -39,10 +40,10 @@ services:
 
   # Frontend
   frontend:
-    image: ghcr.io/clucraft/priceghost-frontend:latest
+    image: ghcr.io/mafanding/priceghost-frontend:latest
     container_name: priceghost-frontend
     ports:
-      - "80:80"
+      - "80:8081"
     depends_on:
       - backend
     restart: unless-stopped

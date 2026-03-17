@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { AuthRequest, authMiddleware } from '../middleware/auth';
-import { productQueries, priceHistoryQueries, stockStatusHistoryQueries } from '../models';
+import { productQueries, priceHistoryQueries, stockStatusHistoryQueries, userQueries } from '../models';
 import { scrapeProduct, scrapeProductWithVoting, ExtractionMethod } from '../services/scraper';
 
 const router = Router();
@@ -39,10 +39,13 @@ router.post('/', async (req: AuthRequest, res: Response) => {
       return;
     }
 
+    // Get proxy settings for this user
+    const proxySettings = await userQueries.getProxySettings(userId);
+
     // If user is confirming a price selection, use the old scraper with their choice
     if (selectedPrice !== undefined && selectedMethod) {
       // User has selected a price from candidates - use it directly
-      const scrapedData = await scrapeProduct(url, userId);
+      const scrapedData = await scrapeProduct(url, userId, proxySettings);
 
       // Create product with the user-selected price
       const product = await productQueries.create(
@@ -83,7 +86,7 @@ router.post('/', async (req: AuthRequest, res: Response) => {
     }
 
     // Use multi-strategy voting scraper
-    const scrapedData = await scrapeProductWithVoting(url, userId);
+    const scrapedData = await scrapeProductWithVoting(url, userId, undefined, undefined, proxySettings);
 
     // Allow adding out-of-stock products, but require a price for in-stock ones
     if (!scrapedData.price && scrapedData.stockStatus !== 'out_of_stock') {

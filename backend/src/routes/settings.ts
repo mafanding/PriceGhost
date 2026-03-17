@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { AuthRequest, authMiddleware } from '../middleware/auth';
 import { userQueries } from '../models';
+import axios from 'axios';
 
 const router = Router();
 
@@ -316,11 +317,11 @@ router.post('/notifications/test/gotify', async (req: AuthRequest, res: Response
   }
 });
 
-// Get AI settings
-router.get('/ai', async (req: AuthRequest, res: Response) => {
+// Get proxy settings
+router.get('/proxy', async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId!;
-    const settings = await userQueries.getAISettings(userId);
+    const settings = await userQueries.getProxySettings(userId);
 
     if (!settings) {
       res.status(404).json({ error: 'User not found' });
@@ -328,54 +329,28 @@ router.get('/ai', async (req: AuthRequest, res: Response) => {
     }
 
     res.json({
-      ai_enabled: settings.ai_enabled || false,
-      ai_verification_enabled: settings.ai_verification_enabled || false,
-      ai_provider: settings.ai_provider || null,
-      anthropic_api_key: settings.anthropic_api_key || null,
-      anthropic_model: settings.anthropic_model || null,
-      openai_api_key: settings.openai_api_key || null,
-      openai_model: settings.openai_model || null,
-      ollama_base_url: settings.ollama_base_url || null,
-      ollama_model: settings.ollama_model || null,
-      gemini_api_key: settings.gemini_api_key || null,
-      gemini_model: settings.gemini_model || null,
+      proxy_enabled: settings.proxy_enabled || false,
+      proxy_url: settings.proxy_url || null,
+      proxy_username: settings.proxy_username || null,
+      proxy_password: settings.proxy_password || null,
     });
   } catch (error) {
-    console.error('Error fetching AI settings:', error);
-    res.status(500).json({ error: 'Failed to fetch AI settings' });
+    console.error('Error fetching proxy settings:', error);
+    res.status(500).json({ error: 'Failed to fetch proxy settings' });
   }
 });
 
-// Update AI settings
-router.put('/ai', async (req: AuthRequest, res: Response) => {
+// Update proxy settings
+router.put('/proxy', async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId!;
-    const {
-      ai_enabled,
-      ai_verification_enabled,
-      ai_provider,
-      anthropic_api_key,
-      anthropic_model,
-      openai_api_key,
-      openai_model,
-      ollama_base_url,
-      ollama_model,
-      gemini_api_key,
-      gemini_model,
-    } = req.body;
+    const { proxy_enabled, proxy_url, proxy_username, proxy_password } = req.body;
 
-    const settings = await userQueries.updateAISettings(userId, {
-      ai_enabled,
-      ai_verification_enabled,
-      ai_provider,
-      anthropic_api_key,
-      anthropic_model,
-      openai_api_key,
-      openai_model,
-      ollama_base_url,
-      ollama_model,
-      gemini_api_key,
-      gemini_model,
+    const settings = await userQueries.updateProxySettings(userId, {
+      proxy_enabled,
+      proxy_url,
+      proxy_username,
+      proxy_password,
     });
 
     if (!settings) {
@@ -384,139 +359,64 @@ router.put('/ai', async (req: AuthRequest, res: Response) => {
     }
 
     res.json({
-      ai_enabled: settings.ai_enabled || false,
-      ai_verification_enabled: settings.ai_verification_enabled || false,
-      ai_provider: settings.ai_provider || null,
-      anthropic_api_key: settings.anthropic_api_key || null,
-      anthropic_model: settings.anthropic_model || null,
-      openai_api_key: settings.openai_api_key || null,
-      openai_model: settings.openai_model || null,
-      ollama_base_url: settings.ollama_base_url || null,
-      ollama_model: settings.ollama_model || null,
-      gemini_api_key: settings.gemini_api_key || null,
-      gemini_model: settings.gemini_model || null,
-      message: 'AI settings updated successfully',
+      proxy_enabled: settings.proxy_enabled || false,
+      proxy_url: settings.proxy_url || null,
+      proxy_username: settings.proxy_username || null,
+      proxy_password: settings.proxy_password || null,
+      message: 'Proxy settings updated successfully',
     });
   } catch (error) {
-    console.error('Error updating AI settings:', error);
-    res.status(500).json({ error: 'Failed to update AI settings' });
+    console.error('Error updating proxy settings:', error);
+    res.status(500).json({ error: 'Failed to update proxy settings' });
   }
 });
 
-// Test AI extraction
-router.post('/ai/test', async (req: AuthRequest, res: Response) => {
+// Test proxy by fetching exit IP
+router.post('/proxy/test', async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId!;
-    const { url } = req.body;
+    const settings = await userQueries.getProxySettings(userId);
 
-    if (!url) {
-      res.status(400).json({ error: 'URL is required' });
+    if (!settings?.proxy_enabled || !settings?.proxy_url) {
+      res.status(400).json({ error: 'Proxy is not enabled or configured' });
       return;
     }
 
-    const settings = await userQueries.getAISettings(userId);
-    if (!settings?.ai_enabled) {
-      res.status(400).json({ error: 'AI extraction is not enabled' });
+    // Build axios proxy config
+    let proxyConfig = {};
+    try {
+      const parsed = new URL(settings.proxy_url);
+      if (parsed.protocol.startsWith('http')) {
+        proxyConfig = {
+          proxy: {
+            protocol: parsed.protocol.replace(':', ''),
+            host: parsed.hostname,
+            port: parseInt(parsed.port),
+            ...(settings.proxy_username ? {
+              auth: { username: settings.proxy_username, password: settings.proxy_password || '' }
+            } : {})
+          }
+        };
+      }
+    } catch {
+      res.status(400).json({ error: 'Invalid proxy URL format' });
       return;
     }
 
-    console.log(`[AI Test] Testing URL: ${url} with provider: ${settings.ai_provider}`);
-
-    const { extractWithAI } = await import('../services/ai-extractor');
-    const result = await extractWithAI(url, settings);
-
-    console.log(`[AI Test] Result:`, JSON.stringify(result, null, 2));
-
-    res.json({
-      success: !!result.price,
-      ...result,
+    const response = await axios.get<{ origin: string }>('https://httpbin.org/ip', {
+      ...proxyConfig,
+      timeout: 15000,
     });
-  } catch (error) {
-    console.error('Error testing AI extraction:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    res.status(500).json({ error: `Failed to test AI extraction: ${errorMessage}` });
-  }
-});
-
-// Test Ollama connection and list available models
-router.post('/ai/test-ollama', async (req: AuthRequest, res: Response) => {
-  try {
-    const { base_url } = req.body;
-
-    if (!base_url) {
-      res.status(400).json({ error: 'Base URL is required' });
-      return;
-    }
-
-    // Try to fetch list of models from Ollama
-    const axios = (await import('axios')).default;
-    const response = await axios.get(`${base_url}/api/tags`, {
-      timeout: 10000,
-    });
-
-    const models = response.data?.models || [];
-    const modelNames = models.map((m: { name: string }) => m.name);
 
     res.json({
       success: true,
-      message: 'Successfully connected to Ollama',
-      models: modelNames,
+      exit_ip: response.data.origin,
+      message: `Proxy working. Exit IP: ${response.data.origin}`,
     });
   } catch (error) {
-    console.error('Error testing Ollama connection:', error);
+    console.error('Error testing proxy:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-
-    if (errorMessage.includes('ECONNREFUSED')) {
-      res.status(400).json({
-        error: 'Cannot connect to Ollama. Make sure Ollama is running.',
-        success: false,
-      });
-    } else {
-      res.status(500).json({
-        error: `Failed to connect to Ollama: ${errorMessage}`,
-        success: false,
-      });
-    }
-  }
-});
-
-// Test Gemini API key
-router.post('/ai/test-gemini', async (req: AuthRequest, res: Response) => {
-  try {
-    const { api_key } = req.body;
-
-    if (!api_key) {
-      res.status(400).json({ error: 'API key is required' });
-      return;
-    }
-
-    // Test the API key by listing models
-    const { GoogleGenerativeAI } = await import('@google/generative-ai');
-    const genAI = new GoogleGenerativeAI(api_key);
-
-    // Try to generate a simple response to verify the key works
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
-    await model.generateContent('Say "API key valid" in 3 words or less');
-
-    res.json({
-      success: true,
-      message: 'Successfully connected to Gemini API',
-    });
-  } catch (error) {
-    console.error('Error testing Gemini connection:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-
-    if (errorMessage.includes('API_KEY_INVALID') || errorMessage.includes('API key')) {
-      res.status(400).json({
-        error: 'Invalid API key. Please check your Gemini API key.',
-        success: false,
-      });
-    } else {
-      res.status(500).json({
-        error: `Failed to connect to Gemini: ${errorMessage}`,
-        success: false,
-      });
-    }
+    res.status(500).json({ success: false, error: `Proxy test failed: ${errorMessage}` });
   }
 });
 

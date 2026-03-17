@@ -40,18 +40,11 @@ export interface NotificationSettings {
   gotify_enabled: boolean;
 }
 
-export interface AISettings {
-  ai_enabled: boolean;
-  ai_verification_enabled: boolean;
-  ai_provider: 'anthropic' | 'openai' | 'ollama' | 'gemini' | null;
-  anthropic_api_key: string | null;
-  anthropic_model: string | null;
-  openai_api_key: string | null;
-  openai_model: string | null;
-  ollama_base_url: string | null;
-  ollama_model: string | null;
-  gemini_api_key: string | null;
-  gemini_model: string | null;
+export interface ProxySettings {
+  proxy_enabled: boolean;
+  proxy_url: string | null;
+  proxy_username: string | null;
+  proxy_password: string | null;
 }
 
 export const userQueries = {
@@ -244,68 +237,38 @@ export const userQueries = {
     return (result.rowCount ?? 0) > 0;
   },
 
-  getAISettings: async (id: number): Promise<AISettings | null> => {
+  getProxySettings: async (id: number): Promise<ProxySettings | null> => {
     const result = await pool.query(
-      `SELECT ai_enabled, COALESCE(ai_verification_enabled, false) as ai_verification_enabled,
-              ai_provider, anthropic_api_key, anthropic_model, openai_api_key, openai_model,
-              ollama_base_url, ollama_model, gemini_api_key, gemini_model
+      `SELECT COALESCE(proxy_enabled, false) as proxy_enabled, proxy_url, proxy_username, proxy_password
        FROM users WHERE id = $1`,
       [id]
     );
     return result.rows[0] || null;
   },
 
-  updateAISettings: async (
+  updateProxySettings: async (
     id: number,
-    settings: Partial<AISettings>
-  ): Promise<AISettings | null> => {
+    settings: Partial<ProxySettings>
+  ): Promise<ProxySettings | null> => {
     const fields: string[] = [];
     const values: (string | boolean | null)[] = [];
     let paramIndex = 1;
 
-    if (settings.ai_enabled !== undefined) {
-      fields.push(`ai_enabled = $${paramIndex++}`);
-      values.push(settings.ai_enabled);
+    if (settings.proxy_enabled !== undefined) {
+      fields.push(`proxy_enabled = $${paramIndex++}`);
+      values.push(settings.proxy_enabled);
     }
-    if (settings.ai_verification_enabled !== undefined) {
-      fields.push(`ai_verification_enabled = $${paramIndex++}`);
-      values.push(settings.ai_verification_enabled);
+    if (settings.proxy_url !== undefined) {
+      fields.push(`proxy_url = $${paramIndex++}`);
+      values.push(settings.proxy_url);
     }
-    if (settings.ai_provider !== undefined) {
-      fields.push(`ai_provider = $${paramIndex++}`);
-      values.push(settings.ai_provider);
+    if (settings.proxy_username !== undefined) {
+      fields.push(`proxy_username = $${paramIndex++}`);
+      values.push(settings.proxy_username);
     }
-    if (settings.anthropic_api_key !== undefined) {
-      fields.push(`anthropic_api_key = $${paramIndex++}`);
-      values.push(settings.anthropic_api_key);
-    }
-    if (settings.anthropic_model !== undefined) {
-      fields.push(`anthropic_model = $${paramIndex++}`);
-      values.push(settings.anthropic_model);
-    }
-    if (settings.openai_api_key !== undefined) {
-      fields.push(`openai_api_key = $${paramIndex++}`);
-      values.push(settings.openai_api_key);
-    }
-    if (settings.openai_model !== undefined) {
-      fields.push(`openai_model = $${paramIndex++}`);
-      values.push(settings.openai_model);
-    }
-    if (settings.ollama_base_url !== undefined) {
-      fields.push(`ollama_base_url = $${paramIndex++}`);
-      values.push(settings.ollama_base_url);
-    }
-    if (settings.ollama_model !== undefined) {
-      fields.push(`ollama_model = $${paramIndex++}`);
-      values.push(settings.ollama_model);
-    }
-    if (settings.gemini_api_key !== undefined) {
-      fields.push(`gemini_api_key = $${paramIndex++}`);
-      values.push(settings.gemini_api_key);
-    }
-    if (settings.gemini_model !== undefined) {
-      fields.push(`gemini_model = $${paramIndex++}`);
-      values.push(settings.gemini_model);
+    if (settings.proxy_password !== undefined) {
+      fields.push(`proxy_password = $${paramIndex++}`);
+      values.push(settings.proxy_password);
     }
 
     if (fields.length === 0) return null;
@@ -313,9 +276,7 @@ export const userQueries = {
     values.push(id.toString());
     const result = await pool.query(
       `UPDATE users SET ${fields.join(', ')} WHERE id = $${paramIndex}
-       RETURNING ai_enabled, COALESCE(ai_verification_enabled, false) as ai_verification_enabled,
-                 ai_provider, anthropic_api_key, anthropic_model, openai_api_key, openai_model,
-                 ollama_base_url, ollama_model, gemini_api_key, gemini_model`,
+       RETURNING COALESCE(proxy_enabled, false) as proxy_enabled, proxy_url, proxy_username, proxy_password`,
       values
     );
     return result.rows[0] || null;

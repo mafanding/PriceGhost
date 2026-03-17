@@ -7,12 +7,12 @@ import {
   profileApi,
   adminApi,
   NotificationSettings,
-  AISettings,
+  ProxySettings,
   UserProfile,
   SystemSettings,
 } from '../api/client';
 
-type SettingsSection = 'profile' | 'notifications' | 'ai' | 'admin';
+type SettingsSection = 'profile' | 'notifications' | 'proxy' | 'admin';
 
 interface VersionInfo {
   version: string;
@@ -57,25 +57,15 @@ export default function Settings() {
   const [isSavingNotifications, setIsSavingNotifications] = useState(false);
   const [isTesting, setIsTesting] = useState<'telegram' | 'discord' | 'pushover' | 'ntfy' | 'gotify' | null>(null);
 
-  // AI state
-  const [aiSettings, setAISettings] = useState<AISettings | null>(null);
-  const [aiEnabled, setAIEnabled] = useState(false);
-  const [aiVerificationEnabled, setAIVerificationEnabled] = useState(false);
-  const [aiProvider, setAIProvider] = useState<'anthropic' | 'openai' | 'ollama' | 'gemini'>('anthropic');
-  const [anthropicApiKey, setAnthropicApiKey] = useState('');
-  const [anthropicModel, setAnthropicModel] = useState('');
-  const [openaiApiKey, setOpenaiApiKey] = useState('');
-  const [openaiModel, setOpenaiModel] = useState('');
-  const [ollamaBaseUrl, setOllamaBaseUrl] = useState('');
-  const [ollamaModel, setOllamaModel] = useState('');
-  const [availableOllamaModels, setAvailableOllamaModels] = useState<string[]>([]);
-  const [isTestingOllama, setIsTestingOllama] = useState(false);
-  const [geminiApiKey, setGeminiApiKey] = useState('');
-  const [geminiModel, setGeminiModel] = useState('');
-  const [isTestingGemini, setIsTestingGemini] = useState(false);
-  const [isSavingAI, setIsSavingAI] = useState(false);
-  const [isTestingAI, setIsTestingAI] = useState(false);
-  const [testUrl, setTestUrl] = useState('');
+  // Proxy state
+  const [proxySettings, setProxySettings] = useState<ProxySettings | null>(null);
+  const [proxyEnabled, setProxyEnabled] = useState(false);
+  const [proxyUrl, setProxyUrl] = useState('');
+  const [proxyUsername, setProxyUsername] = useState('');
+  const [proxyPassword, setProxyPassword] = useState('');
+  const [isSavingProxy, setIsSavingProxy] = useState(false);
+  const [isTestingProxy, setIsTestingProxy] = useState(false);
+  const [proxyTestResult, setProxyTestResult] = useState<string | null>(null);
 
   // Admin state
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -99,10 +89,10 @@ export default function Settings() {
 
   const fetchInitialData = async () => {
     try {
-      const [profileRes, notificationsRes, aiRes] = await Promise.all([
+      const [profileRes, notificationsRes, proxyRes] = await Promise.all([
         profileApi.get(),
         settingsApi.getNotifications(),
-        settingsApi.getAI(),
+        settingsApi.getProxy(),
       ]);
       setProfile(profileRes.data);
       setProfileName(profileRes.data.name || '');
@@ -124,21 +114,12 @@ export default function Settings() {
       setGotifyUrl(notificationsRes.data.gotify_url || '');
       setGotifyAppToken(notificationsRes.data.gotify_app_token || '');
       setGotifyEnabled(notificationsRes.data.gotify_enabled ?? true);
-      // Populate AI fields with actual values
-      setAISettings(aiRes.data);
-      setAIEnabled(aiRes.data.ai_enabled);
-      setAIVerificationEnabled(aiRes.data.ai_verification_enabled ?? false);
-      if (aiRes.data.ai_provider) {
-        setAIProvider(aiRes.data.ai_provider);
-      }
-      setAnthropicApiKey(aiRes.data.anthropic_api_key || '');
-      setAnthropicModel(aiRes.data.anthropic_model || '');
-      setOpenaiApiKey(aiRes.data.openai_api_key || '');
-      setOpenaiModel(aiRes.data.openai_model || '');
-      setOllamaBaseUrl(aiRes.data.ollama_base_url || '');
-      setOllamaModel(aiRes.data.ollama_model || '');
-      setGeminiApiKey(aiRes.data.gemini_api_key || '');
-      setGeminiModel(aiRes.data.gemini_model || '');
+      // Populate proxy fields with actual values
+      setProxySettings(proxyRes.data);
+      setProxyEnabled(proxyRes.data.proxy_enabled || false);
+      setProxyUrl(proxyRes.data.proxy_url || '');
+      setProxyUsername(proxyRes.data.proxy_username || '');
+      setProxyPassword(proxyRes.data.proxy_password || '');
     } catch {
       setError('Failed to load settings');
     } finally {
@@ -449,105 +430,43 @@ export default function Settings() {
     }
   };
 
-  // AI handlers
-  const handleSaveAI = async () => {
+  // Proxy handlers
+  const handleSaveProxy = async () => {
     clearMessages();
-    setIsSavingAI(true);
+    setIsSavingProxy(true);
     try {
-      const response = await settingsApi.updateAI({
-        ai_enabled: aiEnabled,
-        ai_verification_enabled: aiVerificationEnabled,
-        ai_provider: aiProvider,
-        anthropic_api_key: anthropicApiKey || undefined,
-        anthropic_model: aiProvider === 'anthropic' ? anthropicModel || null : undefined,
-        openai_api_key: openaiApiKey || undefined,
-        openai_model: aiProvider === 'openai' ? openaiModel || null : undefined,
-        ollama_base_url: aiProvider === 'ollama' ? ollamaBaseUrl || null : undefined,
-        ollama_model: aiProvider === 'ollama' ? ollamaModel || null : undefined,
-        gemini_api_key: geminiApiKey || undefined,
-        gemini_model: aiProvider === 'gemini' ? geminiModel || null : undefined,
+      const response = await settingsApi.updateProxy({
+        proxy_enabled: proxyEnabled,
+        proxy_url: proxyUrl || null,
+        proxy_username: proxyUsername || null,
+        proxy_password: proxyPassword || null,
       });
-      setAISettings(response.data);
-      setAIVerificationEnabled(response.data.ai_verification_enabled ?? false);
-      setAnthropicModel(response.data.anthropic_model || '');
-      setOpenaiModel(response.data.openai_model || '');
-      setGeminiModel(response.data.gemini_model || '');
-      setAnthropicApiKey('');
-      setOpenaiApiKey('');
-      setGeminiApiKey('');
-      setSuccess('AI settings saved successfully');
+      setProxySettings(response.data);
+      setProxyPassword('');
+      setSuccess('Proxy settings saved successfully');
     } catch {
-      setError('Failed to save AI settings');
+      setError('Failed to save proxy settings');
     } finally {
-      setIsSavingAI(false);
+      setIsSavingProxy(false);
     }
   };
 
-  const handleTestOllama = async () => {
+  const handleTestProxy = async () => {
     clearMessages();
-    if (!ollamaBaseUrl) {
-      setError('Please enter the Ollama base URL');
-      return;
-    }
-    setIsTestingOllama(true);
+    setProxyTestResult(null);
+    setIsTestingProxy(true);
     try {
-      const response = await settingsApi.testOllama(ollamaBaseUrl);
+      const response = await settingsApi.testProxy();
       if (response.data.success) {
-        setAvailableOllamaModels(response.data.models || []);
-        setSuccess(`Connected to Ollama! Found ${response.data.models?.length || 0} models.`);
+        setProxyTestResult(`Exit IP: ${response.data.exit_ip}`);
+        setSuccess(response.data.message || 'Proxy is working');
       } else {
-        setError(response.data.error || 'Failed to connect to Ollama');
+        setError(response.data.error || 'Proxy test failed');
       }
     } catch {
-      setError('Failed to connect to Ollama. Make sure it is running.');
+      setError('Proxy test failed. Check your proxy configuration.');
     } finally {
-      setIsTestingOllama(false);
-    }
-  };
-
-  const handleTestGemini = async () => {
-    clearMessages();
-    if (!geminiApiKey) {
-      setError('Please enter your Gemini API key');
-      return;
-    }
-    setIsTestingGemini(true);
-    try {
-      const response = await settingsApi.testGemini(geminiApiKey);
-      if (response.data.success) {
-        setSuccess('Successfully connected to Gemini API!');
-      } else {
-        setError(response.data.error || 'Failed to connect to Gemini');
-      }
-    } catch {
-      setError('Failed to connect to Gemini. Check your API key.');
-    } finally {
-      setIsTestingGemini(false);
-    }
-  };
-
-  const handleTestAI = async () => {
-    clearMessages();
-    if (!testUrl) {
-      setError('Please enter a URL to test');
-      return;
-    }
-    setIsTestingAI(true);
-    try {
-      const response = await settingsApi.testAI(testUrl);
-      if (response.data.success && response.data.price) {
-        setSuccess(
-          `AI extraction successful! Found: ${response.data.name || 'Unknown'} - ` +
-          `${response.data.price.currency} ${response.data.price.price.toFixed(2)} ` +
-          `(confidence: ${(response.data.confidence * 100).toFixed(0)}%)`
-        );
-      } else {
-        setError('AI could not extract price from this URL');
-      }
-    } catch {
-      setError('Failed to test AI extraction');
-    } finally {
-      setIsTestingAI(false);
+      setIsTestingProxy(false);
     }
   };
 
@@ -1017,15 +936,15 @@ export default function Settings() {
               Notifications
             </button>
             <button
-              className={`settings-nav-item ${activeSection === 'ai' ? 'active' : ''}`}
-              onClick={() => { setActiveSection('ai'); clearMessages(); }}
+              className={`settings-nav-item ${activeSection === 'proxy' ? 'active' : ''}`}
+              onClick={() => { setActiveSection('proxy'); clearMessages(); }}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z" />
-                <path d="M9 14v2" />
-                <path d="M15 14v2" />
+                <circle cx="12" cy="12" r="10" />
+                <line x1="2" y1="12" x2="22" y2="12" />
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
               </svg>
-              AI Extraction
+              Proxy
             </button>
             {profile?.is_admin && (
               <button
@@ -1553,387 +1472,101 @@ export default function Settings() {
             </>
           )}
 
-          {activeSection === 'ai' && (
+          {activeSection === 'proxy' && (
             <>
               <div className="settings-section">
                 <div className="settings-section-header">
-                  <span className="settings-section-icon">🤖</span>
-                  <h2 className="settings-section-title">AI-Powered Price Extraction</h2>
-                  <span className={`settings-section-status ${aiSettings?.ai_enabled ? 'configured' : 'not-configured'}`}>
-                    {aiSettings?.ai_enabled ? 'Enabled' : 'Disabled'}
+                  <span className="settings-section-icon">🌐</span>
+                  <h2 className="settings-section-title">Proxy Configuration</h2>
+                  <span className={`settings-section-status ${proxySettings?.proxy_enabled ? 'configured' : 'not-configured'}`}>
+                    {proxySettings?.proxy_enabled ? 'Enabled' : 'Disabled'}
                   </span>
                 </div>
                 <p className="settings-section-description">
-                  Enable AI-powered price extraction for better compatibility with websites that standard scraping can't handle.
-                  When enabled, AI will be used as a fallback when regular scraping fails to find a price.
+                  Route scraping requests through a proxy server. Useful for accessing geo-restricted sites
+                  or improving anonymity. HTTP/HTTPS proxies are supported for all requests; SOCKS5 proxies
+                  work only for browser-mode scraping.
                 </p>
 
                 <div className="settings-toggle">
                   <div className="settings-toggle-label">
-                    <span className="settings-toggle-title">Enable AI Extraction</span>
+                    <span className="settings-toggle-title">Enable Proxy</span>
                     <span className="settings-toggle-description">
-                      Use AI as a fallback when standard scraping fails
+                      Route all scraping requests through the configured proxy
                     </span>
                   </div>
                   <button
-                    className={`toggle-switch ${aiEnabled ? 'active' : ''}`}
-                    onClick={() => setAIEnabled(!aiEnabled)}
+                    className={`toggle-switch ${proxyEnabled ? 'active' : ''}`}
+                    onClick={() => setProxyEnabled(!proxyEnabled)}
                   />
                 </div>
 
-                <div className="settings-toggle">
-                  <div className="settings-toggle-label">
-                    <span className="settings-toggle-title">Enable AI Verification</span>
-                    <span className="settings-toggle-description">
-                      Verify all scraped prices with AI to ensure accuracy
-                    </span>
-                  </div>
-                  <button
-                    className={`toggle-switch ${aiVerificationEnabled ? 'active' : ''}`}
-                    onClick={() => setAIVerificationEnabled(!aiVerificationEnabled)}
+                <div className="settings-form-group">
+                  <label>Proxy URL</label>
+                  <input
+                    type="text"
+                    value={proxyUrl}
+                    onChange={(e) => setProxyUrl(e.target.value)}
+                    placeholder="http://host:port or socks5://host:port"
+                    disabled={!proxyEnabled}
+                  />
+                  <p className="hint">
+                    Examples: http://proxy.example.com:8080 or socks5://127.0.0.1:1080.
+                    SOCKS5 only applies to browser-mode scraping.
+                  </p>
+                </div>
+
+                <div className="settings-form-group">
+                  <label>Username <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(optional)</span></label>
+                  <input
+                    type="text"
+                    value={proxyUsername}
+                    onChange={(e) => setProxyUsername(e.target.value)}
+                    placeholder="Proxy username"
+                    disabled={!proxyEnabled}
                   />
                 </div>
 
-                {aiVerificationEnabled && (
+                <div className="settings-form-group">
+                  <label>Password <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(optional)</span></label>
+                  <PasswordInput
+                    value={proxyPassword}
+                    onChange={(e) => setProxyPassword(e.target.value)}
+                    placeholder={proxySettings?.proxy_password ? '••••••••' : 'Proxy password'}
+                    disabled={!proxyEnabled}
+                  />
+                </div>
+
+                {proxyTestResult && (
                   <div style={{
-                    marginTop: '0.5rem',
                     padding: '0.75rem',
                     background: 'var(--background)',
                     borderRadius: '0.5rem',
-                    fontSize: '0.8125rem',
+                    fontSize: '0.875rem',
+                    color: 'var(--text)',
+                    marginBottom: '1rem',
                   }}>
-                    <div style={{ fontWeight: 500, marginBottom: '0.5rem', color: 'var(--text)' }}>
-                      Price badges explained:
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <span style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '0.2rem',
-                          fontSize: '0.75rem',
-                          padding: '0.15rem 0.4rem',
-                          borderRadius: '0.25rem',
-                          backgroundColor: 'rgba(16, 185, 129, 0.15)',
-                          color: '#10b981',
-                          fontWeight: 500,
-                        }}>
-                          <span style={{ fontSize: '0.8rem' }}>✓</span> AI
-                        </span>
-                        <span style={{ color: 'var(--text-muted)' }}>
-                          AI verified the scraped price is correct
-                        </span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <span style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '0.2rem',
-                          fontSize: '0.75rem',
-                          padding: '0.15rem 0.4rem',
-                          borderRadius: '0.25rem',
-                          backgroundColor: 'rgba(245, 158, 11, 0.15)',
-                          color: '#f59e0b',
-                          fontWeight: 500,
-                        }}>
-                          <span style={{ fontSize: '0.8rem' }}>⚡</span> AI
-                        </span>
-                        <span style={{ color: 'var(--text-muted)' }}>
-                          AI corrected an incorrect price (e.g., scraped savings amount instead of actual price)
-                        </span>
-                      </div>
-                    </div>
+                    {proxyTestResult}
                   </div>
-                )}
-
-                {(aiEnabled || aiVerificationEnabled) && (
-                  <>
-                    <div className="settings-form-group">
-                      <label>AI Provider</label>
-                      <select
-                        value={aiProvider}
-                        onChange={(e) => setAIProvider(e.target.value as 'anthropic' | 'openai' | 'ollama' | 'gemini')}
-                        style={{
-                          width: '100%',
-                          padding: '0.625rem 0.75rem',
-                          border: '1px solid var(--border)',
-                          borderRadius: '0.375rem',
-                          background: 'var(--background)',
-                          color: 'var(--text)',
-                          fontSize: '0.875rem'
-                        }}
-                      >
-                        <option value="anthropic">Anthropic (Claude)</option>
-                        <option value="openai">OpenAI (GPT)</option>
-                        <option value="gemini">Google (Gemini)</option>
-                        <option value="ollama">Ollama (Local)</option>
-                      </select>
-                    </div>
-
-                    {aiProvider === 'anthropic' && (
-                      <>
-                        <div className="settings-form-group">
-                          <label>Anthropic API Key</label>
-                          <PasswordInput
-                            value={anthropicApiKey}
-                            onChange={(e) => setAnthropicApiKey(e.target.value)}
-                            placeholder="sk-ant-..."
-                          />
-                          <p className="hint">
-                            Get your API key from{' '}
-                            <a href="https://console.anthropic.com/" target="_blank" rel="noopener noreferrer">
-                              console.anthropic.com
-                            </a>
-                          </p>
-                        </div>
-
-                        <div className="settings-form-group">
-                          <label>Model</label>
-                          <select
-                            value={anthropicModel}
-                            onChange={(e) => setAnthropicModel(e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '0.625rem 0.75rem',
-                              border: '1px solid var(--border)',
-                              borderRadius: '0.375rem',
-                              background: 'var(--background)',
-                              color: 'var(--text)',
-                              fontSize: '0.875rem'
-                            }}
-                          >
-                            <option value="">Default (Claude Haiku 4.5)</option>
-                            <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (Fast, cheap)</option>
-                            <option value="claude-sonnet-4-5-20250929">Claude Sonnet 4.5 (Recommended)</option>
-                            <option value="claude-opus-4-5-20251101">Claude Opus 4.5 (Most capable)</option>
-                            <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
-                            <option value="claude-3-7-sonnet-20250219">Claude 3.7 Sonnet (Legacy)</option>
-                            <option value="claude-3-5-haiku-20241022">Claude 3.5 Haiku (Legacy)</option>
-                          </select>
-                          <p className="hint">
-                            Choose a model based on your cost/accuracy needs. Haiku is fastest and cheapest, Opus is most accurate but expensive.
-                            {aiSettings?.anthropic_model && ` (currently: ${aiSettings.anthropic_model})`}
-                          </p>
-                        </div>
-                      </>
-                    )}
-
-                    {aiProvider === 'openai' && (
-                      <>
-                        <div className="settings-form-group">
-                          <label>OpenAI API Key</label>
-                          <PasswordInput
-                            value={openaiApiKey}
-                            onChange={(e) => setOpenaiApiKey(e.target.value)}
-                            placeholder="sk-..."
-                          />
-                          <p className="hint">
-                            Get your API key from{' '}
-                            <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">
-                              platform.openai.com
-                            </a>
-                          </p>
-                        </div>
-
-                        <div className="settings-form-group">
-                          <label>Model</label>
-                          <select
-                            value={openaiModel}
-                            onChange={(e) => setOpenaiModel(e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '0.625rem 0.75rem',
-                              border: '1px solid var(--border)',
-                              borderRadius: '0.375rem',
-                              background: 'var(--background)',
-                              color: 'var(--text)',
-                              fontSize: '0.875rem'
-                            }}
-                          >
-                            <option value="">Default (GPT-4.1 Nano)</option>
-                            <option value="gpt-4.1-nano-2025-04-14">GPT-4.1 Nano (Fast, cheap)</option>
-                            <option value="gpt-4.1-mini-2025-04-14">GPT-4.1 Mini (Balanced)</option>
-                            <option value="gpt-4.1-2025-04-14">GPT-4.1 (High accuracy)</option>
-                            <option value="gpt-5.1-chat-latest">GPT-5.1 Chat (Latest)</option>
-                            <option value="gpt-4o-mini">GPT-4o Mini (Legacy)</option>
-                            <option value="gpt-4o">GPT-4o (Legacy, retiring Feb 2026)</option>
-                          </select>
-                          <p className="hint">
-                            Choose a model based on your cost/accuracy needs. GPT-4.1 Nano is fastest and cheapest.
-                            {aiSettings?.openai_model && ` (currently: ${aiSettings.openai_model})`}
-                          </p>
-                        </div>
-                      </>
-                    )}
-
-                    {aiProvider === 'ollama' && (
-                      <>
-                        <div className="settings-form-group">
-                          <label>Ollama Base URL</label>
-                          <div style={{ display: 'flex', gap: '0.5rem' }}>
-                            <input
-                              type="text"
-                              value={ollamaBaseUrl}
-                              onChange={(e) => setOllamaBaseUrl(e.target.value)}
-                              placeholder="http://localhost:11434"
-                              style={{ flex: 1 }}
-                            />
-                            <button
-                              className="btn btn-secondary"
-                              onClick={handleTestOllama}
-                              disabled={isTestingOllama || !ollamaBaseUrl}
-                              style={{ whiteSpace: 'nowrap' }}
-                            >
-                              {isTestingOllama ? 'Testing...' : 'Test Connection'}
-                            </button>
-                          </div>
-                          <p className="hint">
-                            The URL where Ollama is running. Default is http://localhost:11434
-                          </p>
-                        </div>
-
-                        <div className="settings-form-group">
-                          <label>Model</label>
-                          {availableOllamaModels.length > 0 ? (
-                            <select
-                              value={ollamaModel}
-                              onChange={(e) => setOllamaModel(e.target.value)}
-                              style={{
-                                width: '100%',
-                                padding: '0.625rem 0.75rem',
-                                border: '1px solid var(--border)',
-                                borderRadius: '0.375rem',
-                                background: 'var(--background)',
-                                color: 'var(--text)',
-                                fontSize: '0.875rem'
-                              }}
-                            >
-                              <option value="">Select a model...</option>
-                              {availableOllamaModels.map((model) => (
-                                <option key={model} value={model}>{model}</option>
-                              ))}
-                            </select>
-                          ) : (
-                            <input
-                              type="text"
-                              value={ollamaModel}
-                              onChange={(e) => setOllamaModel(e.target.value)}
-                              placeholder={aiSettings?.ollama_model || 'llama3.2, mistral, etc.'}
-                            />
-                          )}
-                          <p className="hint">
-                            {availableOllamaModels.length > 0
-                              ? 'Select from available models or test connection to refresh list'
-                              : 'Enter model name or test connection to see available models'
-                            }
-                            {aiSettings?.ollama_base_url && aiSettings?.ollama_model && ` (currently: ${aiSettings.ollama_model})`}
-                          </p>
-                        </div>
-                      </>
-                    )}
-
-                    {aiProvider === 'gemini' && (
-                      <>
-                        <div className="settings-form-group">
-                          <label>Gemini API Key</label>
-                          <div style={{ display: 'flex', gap: '0.5rem' }}>
-                            <div style={{ flex: 1 }}>
-                              <PasswordInput
-                                value={geminiApiKey}
-                                onChange={(e) => setGeminiApiKey(e.target.value)}
-                                placeholder="AIza..."
-                              />
-                            </div>
-                            <button
-                              className="btn btn-secondary"
-                              onClick={handleTestGemini}
-                              disabled={isTestingGemini || !geminiApiKey}
-                              style={{ whiteSpace: 'nowrap' }}
-                            >
-                              {isTestingGemini ? 'Testing...' : 'Test Key'}
-                            </button>
-                          </div>
-                          <p className="hint">
-                            Get your API key from{' '}
-                            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">
-                              aistudio.google.com
-                            </a>
-                          </p>
-                        </div>
-
-                        <div className="settings-form-group">
-                          <label>Model</label>
-                          <select
-                            value={geminiModel}
-                            onChange={(e) => setGeminiModel(e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '0.625rem 0.75rem',
-                              border: '1px solid var(--border)',
-                              borderRadius: '0.375rem',
-                              background: 'var(--background)',
-                              color: 'var(--text)',
-                              fontSize: '0.875rem'
-                            }}
-                          >
-                            <option value="">Default (Gemini 2.5 Flash Lite)</option>
-                            <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite (Fast, cheap)</option>
-                            <option value="gemini-2.5-flash">Gemini 2.5 Flash (Balanced)</option>
-                            <option value="gemini-2.5-pro">Gemini 2.5 Pro (High accuracy)</option>
-                            <option value="gemini-3-flash-preview">Gemini 3 Flash Preview (Latest)</option>
-                          </select>
-                          <p className="hint">
-                            Choose a model based on your cost/accuracy needs. Flash Lite is fastest and cheapest.
-                            {aiSettings?.gemini_model && ` (currently: ${aiSettings.gemini_model})`}
-                          </p>
-                        </div>
-                      </>
-                    )}
-                  </>
                 )}
 
                 <div className="settings-form-actions">
                   <button
                     className="btn btn-primary"
-                    onClick={handleSaveAI}
-                    disabled={isSavingAI}
+                    onClick={handleSaveProxy}
+                    disabled={isSavingProxy}
                   >
-                    {isSavingAI ? 'Saving...' : 'Save AI Settings'}
+                    {isSavingProxy ? 'Saving...' : 'Save Proxy Settings'}
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={handleTestProxy}
+                    disabled={isTestingProxy || !proxySettings?.proxy_enabled || !proxySettings?.proxy_url}
+                  >
+                    {isTestingProxy ? 'Testing...' : 'Test Proxy'}
                   </button>
                 </div>
               </div>
-
-              {aiSettings?.ai_enabled && (aiSettings.anthropic_api_key || aiSettings.openai_api_key || (aiSettings.ollama_base_url && aiSettings.ollama_model) || aiSettings.gemini_api_key) && (
-                <div className="settings-section">
-                  <div className="settings-section-header">
-                    <span className="settings-section-icon">🧪</span>
-                    <h2 className="settings-section-title">Test AI Extraction</h2>
-                  </div>
-                  <p className="settings-section-description">
-                    Test AI extraction on a product URL to see if it can successfully extract the price.
-                  </p>
-
-                  <div className="settings-form-group">
-                    <label>Product URL</label>
-                    <input
-                      type="url"
-                      value={testUrl}
-                      onChange={(e) => setTestUrl(e.target.value)}
-                      placeholder="https://example.com/product"
-                    />
-                  </div>
-
-                  <div className="settings-form-actions">
-                    <button
-                      className="btn btn-secondary"
-                      onClick={handleTestAI}
-                      disabled={isTestingAI || !testUrl}
-                    >
-                      {isTestingAI ? 'Testing...' : 'Test Extraction'}
-                    </button>
-                  </div>
-                </div>
-              )}
             </>
           )}
 
