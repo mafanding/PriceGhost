@@ -20,9 +20,8 @@ FROM node:20-slim AS production
 
 WORKDIR /app
 
-# Install Chromium dependencies for Puppeteer
+# Install shared library dependencies needed by Chrome
 RUN apt-get update && apt-get install -y \
-    chromium \
     fonts-liberation \
     libasound2 \
     libatk-bridge2.0-0 \
@@ -44,18 +43,11 @@ RUN apt-get update && apt-get install -y \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
-# Disable Chromium crash handler (causes errors in Docker)
-RUN find / -name "chrome_crashpad_handler" -exec ln -sf /bin/true {} \; 2>/dev/null || true
-
-# Set Puppeteer to use installed Chromium
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
-
 # Copy package files
 COPY package*.json ./
 
-# Install production dependencies only
-RUN npm install --omit=dev
+# Install production dependencies and Puppeteer's bundled Chrome
+RUN npm install --omit=dev && npx puppeteer browsers install chrome
 
 # Copy built files from builder
 COPY --from=builder /app/dist ./dist

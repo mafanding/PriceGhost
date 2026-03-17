@@ -284,13 +284,10 @@ async function scrapeWithBrowser(url: string, proxy?: ProxySettings | null): Pro
       '--disable-blink-features=AutomationControlled',
       '--disable-infobars',
       '--disable-crash-reporter',
-      '--crash-dumps-dir=/tmp',
-      '--no-zygote',
       '--window-size=1920,1080',
       '--start-maximized',
       ...proxyArgs,
     ],
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
     ignoreDefaultArgs: ['--enable-automation'],
   });
 
