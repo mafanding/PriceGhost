@@ -43,7 +43,7 @@ services:
     image: ghcr.io/mafanding/priceghost-frontend:latest
     container_name: priceghost-frontend
     ports:
-      - "80:8081"
+      - "8081:80"
     depends_on:
       - backend
     restart: unless-stopped
