@@ -30,8 +30,7 @@ export default function ProductDetail() {
   const [priceDropThreshold, setPriceDropThreshold] = useState<string>('');
   const [targetPrice, setTargetPrice] = useState<string>('');
   const [notifyBackInStock, setNotifyBackInStock] = useState(false);
-  const [aiVerificationDisabled, setAiVerificationDisabled] = useState(false);
-  const [aiExtractionDisabled, setAiExtractionDisabled] = useState(false);
+  const [proxyEnabled, setProxyEnabled] = useState(false);
 
   const REFRESH_INTERVALS = [
     { value: 300, label: '5 minutes' },
@@ -64,8 +63,7 @@ export default function ProductDetail() {
         setTargetPrice(productRes.data.target_price.toString());
       }
       setNotifyBackInStock(productRes.data.notify_back_in_stock || false);
-      setAiVerificationDisabled(productRes.data.ai_verification_disabled || false);
-      setAiExtractionDisabled(productRes.data.ai_extraction_disabled || false);
+      setProxyEnabled(productRes.data.proxy_enabled || false);
     } catch {
       setError('Failed to load product details');
     } finally {
@@ -143,16 +141,14 @@ export default function ProductDetail() {
         price_drop_threshold: threshold,
         target_price: target,
         notify_back_in_stock: notifyBackInStock,
-        ai_verification_disabled: aiVerificationDisabled,
-        ai_extraction_disabled: aiExtractionDisabled,
+        proxy_enabled: proxyEnabled,
       });
       setProduct({
         ...product,
         price_drop_threshold: threshold,
         target_price: target,
         notify_back_in_stock: notifyBackInStock,
-        ai_verification_disabled: aiVerificationDisabled,
-        ai_extraction_disabled: aiExtractionDisabled,
+        proxy_enabled: proxyEnabled,
       });
       showToast('Notification settings saved');
     } catch {
@@ -860,24 +856,12 @@ export default function ProductDetail() {
         <label className="advanced-checkbox-group">
           <input
             type="checkbox"
-            checked={aiExtractionDisabled}
-            onChange={(e) => setAiExtractionDisabled(e.target.checked)}
+            checked={proxyEnabled}
+            onChange={(e) => setProxyEnabled(e.target.checked)}
           />
           <div className="advanced-checkbox-label">
-            <span>Disable AI Extraction</span>
-            <span>Prevent AI from being used as a fallback when standard scraping fails to find a price. Useful if AI keeps extracting wrong prices.</span>
-          </div>
-        </label>
-
-        <label className="advanced-checkbox-group" style={{ marginTop: '0.75rem' }}>
-          <input
-            type="checkbox"
-            checked={aiVerificationDisabled}
-            onChange={(e) => setAiVerificationDisabled(e.target.checked)}
-          />
-          <div className="advanced-checkbox-label">
-            <span>Disable AI Verification</span>
-            <span>Prevent AI from "correcting" the scraped price. Useful when AI keeps picking the wrong price (e.g., main price instead of other sellers on Amazon).</span>
+            <span>Use Proxy</span>
+            <span>Enable proxy for scraping this product. Uses the proxy URL configured in Settings.</span>
           </div>
         </label>
 

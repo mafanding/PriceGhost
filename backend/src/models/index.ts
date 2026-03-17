@@ -331,6 +331,7 @@ export interface Product {
   ai_verification_disabled: boolean;
   ai_extraction_disabled: boolean;
   checking_paused: boolean;
+  proxy_enabled: boolean;
   created_at: Date;
 }
 
@@ -496,6 +497,7 @@ export const productQueries = {
       notify_back_in_stock?: boolean;
       ai_verification_disabled?: boolean;
       ai_extraction_disabled?: boolean;
+      proxy_enabled?: boolean;
     }
   ): Promise<Product | null> => {
     const fields: string[] = [];
@@ -529,6 +531,10 @@ export const productQueries = {
     if (updates.ai_extraction_disabled !== undefined) {
       fields.push(`ai_extraction_disabled = $${paramIndex++}`);
       values.push(updates.ai_extraction_disabled);
+    }
+    if (updates.proxy_enabled !== undefined) {
+      fields.push(`proxy_enabled = $${paramIndex++}`);
+      values.push(updates.proxy_enabled);
     }
 
     if (fields.length === 0) return null;

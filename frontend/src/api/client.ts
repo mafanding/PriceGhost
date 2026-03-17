@@ -68,6 +68,7 @@ export interface Product {
   ai_verification_disabled: boolean;
   ai_extraction_disabled: boolean;
   checking_paused: boolean;
+  proxy_enabled: boolean;
   created_at: string;
   current_price: number | null;
   currency: string | null;
@@ -136,6 +137,7 @@ export const productsApi = {
     notify_back_in_stock?: boolean;
     ai_verification_disabled?: boolean;
     ai_extraction_disabled?: boolean;
+    proxy_enabled?: boolean;
   }) => api.put<Product>(`/products/${id}`, data),
 
   delete: (id: number) => api.delete(`/products/${id}`),

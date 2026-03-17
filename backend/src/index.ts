@@ -222,6 +222,10 @@ async function runMigrations() {
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'checking_paused') THEN
           ALTER TABLE products ADD COLUMN checking_paused BOOLEAN DEFAULT false;
         END IF;
+        -- Per-product proxy enable flag
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'proxy_enabled') THEN
+          ALTER TABLE products ADD COLUMN proxy_enabled BOOLEAN DEFAULT false;
+        END IF;
       END $$;
     `);
 

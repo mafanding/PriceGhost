@@ -65,6 +65,7 @@ router.post('/:productId/refresh', async (req: AuthRequest, res: Response) => {
     const preferredMethod = await productQueries.getPreferredExtractionMethod(productId);
     const anchorPrice = await productQueries.getAnchorPrice(productId);
     const proxySettings = await userQueries.getProxySettings(userId);
+    const effectiveProxy = proxySettings ? { ...proxySettings, proxy_enabled: product.proxy_enabled ?? false } : proxySettings;
 
     // Scrape product data with proper settings (same as scheduler)
     const scrapedData = await scrapeProductWithVoting(
@@ -72,7 +73,7 @@ router.post('/:productId/refresh', async (req: AuthRequest, res: Response) => {
       userId,
       preferredMethod as ExtractionMethod | undefined,
       anchorPrice || undefined,
-      proxySettings
+      effectiveProxy
     );
 
     // Update stock status and record change if different

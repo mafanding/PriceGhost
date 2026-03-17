@@ -31,8 +31,9 @@ async function checkPrices(): Promise<void> {
 
         // Get proxy settings for this user
         const proxySettings = await userQueries.getProxySettings(product.user_id);
+        const effectiveProxy = proxySettings ? { ...proxySettings, proxy_enabled: product.proxy_enabled ?? false } : proxySettings;
 
-        console.log(`[Scheduler] Product ${product.id} - preferredMethod: ${preferredMethod}, anchorPrice: ${anchorPrice}, proxy: ${proxySettings?.proxy_enabled ? 'enabled' : 'disabled'}`);
+        console.log(`[Scheduler] Product ${product.id} - preferredMethod: ${preferredMethod}, anchorPrice: ${anchorPrice}, proxy: ${effectiveProxy?.proxy_enabled ? 'enabled' : 'disabled'}`);
 
         // Use voting scraper with preferred method and anchor price if available
         const scrapedData = await scrapeProductWithVoting(
@@ -40,7 +41,7 @@ async function checkPrices(): Promise<void> {
           product.user_id,
           preferredMethod as ExtractionMethod | undefined,
           anchorPrice || undefined,
-          proxySettings
+          effectiveProxy
         );
 
         console.log(`[Scheduler] Product ${product.id} - scraped price: ${scrapedData.price?.price}, candidates: ${scrapedData.priceCandidates.map(c => `${c.price}(${c.method})`).join(', ')}`);

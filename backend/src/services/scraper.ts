@@ -1118,6 +1118,63 @@ const siteScrapers: SiteScraper[] = [
     },
   },
 
+  // JB Hi-Fi (NZ & AU)
+  {
+    match: (url) => /jbhifi\.co\.(nz|au)/i.test(url),
+    scrape: ($) => {
+      let price: ParsedPrice | null = null;
+
+      // Strategy 1: OG meta tags (server-rendered, most reliable)
+      const ogPrice = $('meta[property="og:price:amount"]').attr('content');
+      const ogCurrency = $('meta[property="og:price:currency"]').attr('content') || 'NZD';
+      if (ogPrice) {
+        const parsed = parseFloat(ogPrice);
+        if (!isNaN(parsed) && parsed > 0) {
+          price = { price: parsed, currency: ogCurrency };
+        }
+      }
+
+      // Strategy 2: Shopify product JSON (price in cents)
+      if (!price) {
+        try {
+          const scripts = $('script').toArray();
+          for (const script of scripts) {
+            const text = $(script).html() || '';
+            const match = text.match(/window\.themeConfig\s*\(\s*['"]product['"]\s*,\s*(\{[\s\S]*?\})\s*\)/);
+            if (match) {
+              const productData = JSON.parse(match[1]);
+              if (productData.price && typeof productData.price === 'number') {
+                price = { price: productData.price / 100, currency: 'NZD' };
+                break;
+              }
+            }
+          }
+        } catch (_e) { /* ignore parse errors */ }
+      }
+
+      // Strategy 3: data-testid="ticket-price" (if browser-rendered)
+      if (!price) {
+        const ticketPrice = $('[data-testid="ticket-price"]').first().text().trim();
+        if (ticketPrice) {
+          const parsed = parsePrice('$' + ticketPrice);
+          if (parsed) price = parsed;
+        }
+      }
+
+      // Product name
+      const name = $('meta[property="og:title"]').attr('content')?.replace(/\s*-\s*JB Hi-Fi.*$/, '') ||
+                   $('h1').first().text().trim() ||
+                   null;
+
+      // Product image
+      const imageUrl = $('meta[property="og:image"]').attr('content') ||
+                       $('meta[property="og:image:secure_url"]').attr('content') ||
+                       null;
+
+      return { name, price, imageUrl };
+    },
+  },
+
 ];
 
 // Generic selectors as fallback
@@ -1362,6 +1419,7 @@ export async function scrapeProductWithVoting(
     /target\.com/i,
     /walmart\.com/i,
     /costco\.com/i,
+    /jbhifi\.co\.(nz|au)/i,
   ];
   const requiresBrowser = jsHeavySites.some(pattern => pattern.test(url));
 
