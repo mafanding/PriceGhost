@@ -33,6 +33,12 @@ services:
       PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
     ports:
       - "3001:3001"
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - seccomp=unconfined
+    tmpfs:
+      - /tmp
     depends_on:
       postgres:
         condition: service_healthy
