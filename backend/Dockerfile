@@ -43,6 +43,9 @@ RUN apt-get update && apt-get install -y \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
+# Set Puppeteer cache to a shared location
+ENV PUPPETEER_CACHE_DIR=/app/.cache/puppeteer
+
 # Copy package files
 COPY package*.json ./
 
